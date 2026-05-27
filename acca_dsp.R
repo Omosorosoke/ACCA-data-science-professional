@@ -23,6 +23,10 @@ glimpse(acca)
 
 # 3 And answer your questions
 
+acca |> filter(actual_fraud == 1) |> select(actual_fraud) |> relocate(actual_fraud, .after = transaction_id)
+
+glimpse(acca)
+
 # Appropriate data type
 acca <- acca |> mutate(
   transaction_date = mdy(transaction_date),
@@ -97,6 +101,20 @@ data_customer |> filter(actual_fraud == "fraud") |>
 data_customer |> filter(actual_fraud == "fraud") |>
   group_by(customer_age) |> 
   summarise(
+    fraud_count = n(),
     value_lost = round(sum(amount))
-  ) |> arrange(desc(value_lost)) |> gt()
+  ) |> arrange(desc(value_lost)) |> gt() # Customer age 24 and 59 list the most to fraud with 217 and 194 units of the currency value involved
 
+##
+## VIP da
+## Are VIP customers more or less likely to experience fraud?
+## Variables (vip, non - vip, actual fraud)
+data_vip_customer <- acca |> select(is_vip, actual_fraud, amount)
+vip <- data_vip_customer |> filter(is_vip == "vip")
+non_vip <- data_vip_customer |> filter(is_vip == "non vip") 
+vip |> filter(actual_fraud == "fraud")
+
+acca |>  
+filter(actual_fraud == "fraud" & is_vip == "non vip")
+
+View(acca)
