@@ -4,53 +4,63 @@ install.packages("gt")
 library(tidyverse)
 library(gt)
 acca <- read_csv("SDS Data Science Professional specimen exam - question 1, appendix 2.csv")
+
 names(acca)
 
 glimpse(acca)
 
-# Data analyses strategy
-# Prompt AI  for possible 
-# Transaction date to date , customer age and is_VIP
-# S3 vector, Atomic vector, list vector, NULL. Vector attributes
-typeof(acca$transaction_date)
 
 # Check for missing values and address them 
 
-# Answer your questions
-is.character(acca$billing_country)
+# Data Analysis strategy
 
-
-# Clean these columns
+# 1 select relevant column
+# 
+# 2 clean these columns.
 # actual_fraud to integer
-# label the value of actual_fraud
-# transaction_date to date and time
-# And answer your questions
+# label the values of actual_fraud
+# Covert the transaction_date to date format type
 
-acca |> mutate(
+# 3 And answer your questions
+
+# Appropriate data type
+acca <- acca |> mutate(
   transaction_date = mdy(transaction_date),
-  actual_fraud = factor(actual_fraud, levels = c(0, 1), labels = c("non fraud", "fraud"))) |> 
-  relocate(.before = transaction_id)
+  actual_fraud = factor(actual_fraud, levels = c(0, 1), labels = c("non fraud", "fraud")))
 
 
-
-
-
-View(acca)
 # What percentage of transactions are fraudulent?  (actual fraud)
 # What is the total financial exposure to fraud?  (amount)
-# What is the average fraud transaction amount?  (amount)
-# Are fraudulent transactions increasing over time (data and time)
-
-acca |> count(actual_fraud, sort = T)
-
-acca |> group_by(actual_fraud) |> 
+fraud_data <- acca |> group_by(actual_fraud) |> 
   summarise(
     num = n(),
-    fraud_prop = num/nrow(acca) * 100,
-    total_amount = sum(amount)
+    fraud_prop = round(num/nrow(acca) * 100, digits = 1),
+    avrg_fraud_value = round(mean(amount, na.rm = T), digits = 1),
+    total_amount = format(sum(amount), big.mark = ",")
   ) |> gt()
 
-?gt()
+fraud_data
 
-?sum()
-?nrow()
+# Fraud trend over the period
+ acca |> mutate(
+  day = day(transaction_date)
+) |> filter(actual_fraud == "fraud") |> group_by(day) |> 
+  summarise(
+    total_fraud = sum(amount),
+    incidence = n()
+  ) |> 
+   ggplot() +
+   geom_line(aes(x = day, y = incidence))
+
+# Fraud trend over the period
+# Are fraudulent transactions increasing over time (data and time)
+
+ acca |> mutate(
+  day = day(transaction_date) |> filter(actual_fraud == "fraud")) |> group_by(day) |> 
+  summarise(
+    total_fraud = sum(amount),
+    incidence = n()
+  ) |> 
+   ggplot() +
+   geom_line(aes(x = day, y = total_fraud))
+
