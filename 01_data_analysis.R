@@ -93,10 +93,3 @@ data_customer |> filter(actual_fraud == "fraud") |>
 
 data_customer |> filter(actual_fraud == "fraud") |> 
   count(customer_age, wt = amount, sort = T) # Customer age 24 and 59 list the most to fraud with 217 and 194 units of the currency value involved
-
-data_customer |> filter(actual_fraud == "fraud") |>
-  group_by(customer_age) |> 
-  summarise(
-    value_lost = round(sum(amount))
-  ) |> arrange(desc(value_lost)) |> gt()
-
