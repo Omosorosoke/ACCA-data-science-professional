@@ -34,8 +34,8 @@ acca <- acca |> mutate(
 fraud_data <- acca |> group_by(actual_fraud) |> 
   summarise(
     num = n(),
-    fraud_prop = round(num/nrow(acca) * 100, digits = 1),
-    avrg_fraud_value = round(mean(amount, na.rm = T), digits = 1),
+    proportion = round(num/nrow(acca) * 100, digits = 1),
+    value = round(mean(amount, na.rm = T), digits = 1),
     total_amount = format(sum(amount), big.mark = ",")
   ) |> gt()
 
@@ -50,17 +50,46 @@ fraud_data
     incidence = n()
   ) |> 
    ggplot() +
-   geom_line(aes(x = day, y = incidence))
+   geom_point(aes(x = day, y = incidence)) # The incidence of fraud incidence has been stable overtime; static at one or two per day
 
 # Fraud trend over the period
 # Are fraudulent transactions increasing over time (data and time)
-
  acca |> mutate(
-  day = day(transaction_date) |> filter(actual_fraud == "fraud")) |> group_by(day) |> 
+  day = day(transaction_date)
+) |> filter(actual_fraud == "fraud") |> group_by(day) |> 
   summarise(
     total_fraud = sum(amount),
     incidence = n()
   ) |> 
    ggplot() +
-   geom_line(aes(x = day, y = total_fraud))
+   geom_point(aes(x= total_fraud)) # The amount involved in fraudulent transaction is betweeen 50 to 100 units of the currency amount
 
+
+glimpse(acca)
+
+ 
+?n()
+
+# Customer risk analysis
+# Which customer age groups experience the most fraud?
+# Are VIP customers more or less likely to experience fraud?
+# Does customer tenure reduce fraud risk?
+# Which customers generate the highest fraud losses?
+
+# Data analysis strategy
+# Variables (customer_tenure_days, is_vip, customer_id, customer_age    ) 
+# data type - is_vip to factor, confirm the distinct number 
+data_customer <- acca |> select(customer_tenure_days, is_vip, customer_id, customer_age, amount, actual_fraud)
+
+glimpse(data_customer)
+
+
+# Which customer age groups experience the most fraud?
+data_customer <- data_customer |> mutate(
+  is_vip = factor(is_vip, levels = c(0, 1), labels = c("non vip", "vip")))
+
+data_customer |> filter(actual_fraud == "fraud") |> 
+  count(customer_age, sort = T) # Customer age 26 and 42 experience the most fraud with two incidences per age group
+
+data_customer |> filter(actual_fraud == "fraud") |> 
+  count(customer_age, wt = amount, sort = T) # Customer age 24 and 59 list the most to fraud with 217 and 194 units of the currency value involved
