@@ -23,15 +23,13 @@ glimpse(acca)
 
 # 3 And answer your questions
 
-acca |> filter(actual_fraud == 1) |> select(actual_fraud) |> relocate(actual_fraud, .after = transaction_id)
-
-glimpse(acca)
 
 # Appropriate data type
 acca <- acca |> mutate(
   transaction_date = mdy(transaction_date),
-  actual_fraud = factor(actual_fraud, levels = c(0, 1), labels = c("non fraud", "fraud")))
+  actual_fraud = as.logical(actual_fraud))
 
+View(acca |> filter(actual_fraud == T))
 
 # What percentage of transactions are fraudulent?  (actual fraud)
 # What is the total financial exposure to fraud?  (amount)
@@ -60,13 +58,13 @@ fraud_data
 # Are fraudulent transactions increasing over time (data and time)
  acca |> mutate(
   day = day(transaction_date)
-) |> filter(actual_fraud == "fraud") |> group_by(day) |> 
+) |> filter(actual_fraud == T) |> group_by(day) |> 
   summarise(
     total_fraud = sum(amount),
     incidence = n()
   ) |> 
    ggplot() +
-   geom_point(aes(x= total_fraud)) # The amount involved in fraudulent transaction is betweeen 50 to 100 units of the currency amount
+   geom_point(aes(x = day, y = total_fraud)) # The amount involved in fraudulent transaction is betweeen 50 to 100 units of the currency amount
 
 
 glimpse(acca)
@@ -90,31 +88,47 @@ glimpse(data_customer)
 
 # Which customer age groups experience the most fraud?
 data_customer <- data_customer |> mutate(
-  is_vip = factor(is_vip, levels = c(0, 1), labels = c("non vip", "vip")))
+  is_vip = as.logical(is_vip)
 
-data_customer |> filter(actual_fraud == "fraud") |> 
-  count(customer_age, sort = T) # Customer age 26 and 42 experience the most fraud with two incidences per age group
+data_customer |> filter(actual_fraud == T) |> 
+  count(customer_age, sort = T) |> gt() # Customer age 26 and 42 experience the most fraud with two incidences per age group
 
-data_customer |> filter(actual_fraud == "fraud") |> 
-  count(customer_age, wt = amount, sort = T) # Customer age 24 and 59 list the most to fraud with 217 and 194 units of the currency value involved
+data_customer |> filter(actual_fraud == T) |> 
+  count(customer_age, wt = amount, name = "sum_loss", sort = T) |> gt() # Customer age 24 and 59 list the most to fraud with 217 and 194 units of the currency value involved
 
-data_customer |> filter(actual_fraud == "fraud") |>
+?count()
+
+data_customer |> filter(actual_fraud == T) |>
   group_by(customer_age) |> 
   summarise(
     fraud_count = n(),
     value_lost = round(sum(amount))
   ) |> arrange(desc(value_lost)) |> gt() # Customer age 24 and 59 list the most to fraud with 217 and 194 units of the currency value involved
 
-##
-## VIP da
+
 ## Are VIP customers more or less likely to experience fraud?
 ## Variables (vip, non - vip, actual fraud)
 data_vip_customer <- acca |> select(is_vip, actual_fraud, amount)
-vip <- data_vip_customer |> filter(is_vip == "vip")
-non_vip <- data_vip_customer |> filter(is_vip == "non vip") 
-vip |> filter(actual_fraud == "fraud")
 
-acca |>  
-filter(actual_fraud == "fraud" & is_vip == "non vip")
+data_vip_customer |> filter(actual_fraud == T & is_vip == 1) # There are no fraud incidence for VIP personality
 
-View(acca)
+data_fraud_vip <- data_vip_customer |> filter(is_vip == 1)
+
+data_fraud_non_vip <- data_vip_customer |> filter(is_vip == 0) 
+
+data_fraud_vip |> count(is_vip, sort = T)
+
+data_fraud_non_vip|> count(is_vip, sort = T)
+
+data_fraud_non_vip |> count(actual_fraud, sort = T)
+data_fraud_non_vip |> group_by(actual_fraud) |> 
+  summarise(
+    fraud_count = n(),
+    fraud_prop = round(fraud_count/nrow(data_fraud_non_vip), digits = 2) 
+  ) |> gt() # 98% of of non-vip customer reported fraud
+
+data_fraud_vip |> count(actual_fraud, sort = T) # No VIP customer was involved in Fraud
+
+# Does customer tenure reduce fraud risk?
+# variables (actual fraud, customer tenure in days) two sample T test or Mann - Whitney U test
+
