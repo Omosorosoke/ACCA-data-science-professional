@@ -1,12 +1,10 @@
 library(tidyverse)
 library(gt)
-install.packages("gtExtras")
 library(gtExtras)
-library("ggthemes")
+library(ggthemes)
 acca <- read_csv("SDS Data Science Professional specimen exam - question 1, appendix 2.csv")
 
 names(acca)
-
 glimpse(acca)
 
 
@@ -39,8 +37,6 @@ fraud_data <- acca |> group_by(actual_fraud) |>
     total_amount = format(sum(amount), big.mark = ",")
   ) |> gt()
 
-fraud_data
-
 # Fraud trend over the period
  acca |> mutate(
   day = day(transaction_date)
@@ -65,11 +61,6 @@ fraud_data
    geom_point(aes(x= total_fraud)) # The amount involved in fraudulent transaction is betweeen 50 to 100 units of the currency amount
 
 
-glimpse(acca)
-
- 
-?n()
-
 # Customer risk analysis
 # Which customer age groups experience the most fraud?
 # Are VIP customers more or less likely to experience fraud?
@@ -80,8 +71,6 @@ glimpse(acca)
 # Variables (customer_tenure_days, is_vip, customer_id, customer_age    ) 
 # data type - is_vip to factor, confirm the distinct number 
 data_customer <- acca |> select(customer_tenure_days, is_vip, customer_id, customer_age, amount, actual_fraud)
-
-glimpse(data_customer)
 
 
 # Which customer age groups experience the most fraud?
@@ -115,10 +104,7 @@ data_customer_losses |> filter(actual_fraud == "fraud") |> count(customer_id, cu
     )  
 ) 
 
-?tab_style()
-?gt()
 
-?cell_borders()
 # Merchant Risk Analysis
 # Which merchant categories have the highest fraud rates?
 data_merchant <- acca |> select(merchant_id, merchant_category, merchant_riskscore, actual_fraud, amount) 
@@ -134,7 +120,3 @@ acca |> select(merchant_riskscore, actual_fraud, amount) |> ggplot(aes( x = actu
   scale_color_colorblind()  +
   labs(title = "Customer transaction fraud", subtitle = "Incidence is more pronounced highly risky merchant",
   )
-
-
-
-?gt_highlight_rows()
