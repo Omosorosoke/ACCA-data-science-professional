@@ -46,7 +46,10 @@ fraud_data <- acca |> group_by(actual_fraud) |>
     incidence = n()
   ) |> 
    ggplot() +
-   geom_point(aes(x = day, y = incidence)) # The incidence of fraud incidence has been stable overtime; static at one or two per day
+   geom_point(aes(x = day, y = incidence)) + theme_economist() +
+   scale_color_economist()
+
+# The incidence of fraud incidence has been stable overtime; static at one or two per day
 
 # Fraud trend over the period
 # Are fraudulent transactions increasing over time (data and time)
