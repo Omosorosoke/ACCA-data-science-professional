@@ -123,3 +123,39 @@ acca |> select(merchant_riskscore, actual_fraud, amount) |> ggplot(aes( x = actu
   scale_color_colorblind()  +
   labs(title = "Customer transaction fraud", subtitle = "Incidence is more pronounced highly risky merchant",
   )
+
+
+## Geographic Fraud Patterns
+# Which countries generate the most fraud?
+# Are cross-border transactions riskier?
+# Are mismatches between billing, shipping, and IP country associated with fraud?
+
+data_country <- acca |> select(ip_country, billing_country,  shipping_country, actual_fraud, amount )
+
+data_country |> mutate(
+  cross_border = if_else((ip_country != billing_country) & (billing_country!= shipping_country) & (ip_country != shipping_country), "cross border", "within border", "check"))
+
+data_country <- data_country |> mutate(
+  cross_border = if_else((ip_country != billing_country) & (billing_country!= shipping_country) & (ip_country != shipping_country), "cross border", "within border", "check"))
+
+data_country |> filter(actual_fraud == "fraud") |> group_by(cross_border) |> 
+  summarise(
+    fraud_incidence = n(),
+    sum_loss = round(sum(amount), digits = 0)
+  )  |> gt() |> 
+  gt_highlight_rows(row = 1, fill = "lightgrey", font_color = "navyblue", alpha = 0.3, font_weight = "normal") # Crossborder transactions are riskier. Transactions where the ip country is different from the billing from those of billing and shipping report more than those which is not the case  
+
+data_digital <- acca |> select(payment_method, channel, amount, card_present, device_fingerprint, actual_fraud)
+
+#Which payment methods are most vulnerable?
+data_digital |> filter(actual_fraud == "fraud") |> count(payment_method, sort = TRUE) |> ggplot(aes(x = fct_reorder(payment_method, n, .desc = F),  y = n)) +
+  geom_col(fill = "skyblue") + coord_flip() + theme_economist_white() + scale_colour_economist() + theme_classic ()
+
+# Which channels have the highest fraud rates?
+data_digital |> filter(actual_fraud == "fraud") |> count(channel, sort = TRUE) |> ggplot(aes(x = fct_reorder(channel, n, .desc = F),  y = n)) +
+  geom_col(fill = "skyblue") + theme_economist_white() + scale_colour_economist() + theme_classic () # Web payment method reported the highest fraud.
+
+
+
+#
+#
