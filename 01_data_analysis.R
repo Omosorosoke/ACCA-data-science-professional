@@ -8,7 +8,7 @@ acca_data <- read_csv(
 )
 View(acca_data)
 names(acca_data)
-glimpse(acca)
+glimpse(acca_data)
 
 
 # Check for missing values and address them
