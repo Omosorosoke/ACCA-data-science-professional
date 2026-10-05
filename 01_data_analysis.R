@@ -1,106 +1,469 @@
+# Load packages ----------------------------------------------------------
+
 library(tidyverse)
 library(gt)
 library(gtExtras)
 library(ggthemes)
 library(janitor)
+library(hrbrthemes)
+library(scales)
+library(marquee)
+library(ggrepel)
+
+# Import data and keep a raw copy------------------------------------------------------------
+
 acca_data <- read_csv(
   "SDS Data Science Professional specimen exam - question 1, appendix 2.csv"
 )
-View(acca_data)
-names(acca_data)
+
+acca_data_raw <- acca_data # keep a copy of the raw data
+
+# Explore data -----------------------------------------------------------
+
 glimpse(acca_data)
 
-
-# Check for missing values and address them
-
-# Data Analysis strategy
-
-# 1 select relevant column
-#
-# 2 clean these columns.
-# actual_fraud to integer
-# label the values of actual_fraud
-# Covert the transaction_date to date format type
-
-# 3 And answer your questions
-
-# Appropriate data type
-acca_data <- acca |>
+# Check columns for proper names, appropriate data types  and recode values
+acca_data_rds <- acca_data |>
   mutate(
     transaction_date = mdy(transaction_date),
     actual_fraud = factor(
       actual_fraud,
       levels = c(0, 1),
-      labels = c("non fraud", "fraud")
+      labels = c("non fraud", "fraudulent") # convert to factors and label values
     )
   )
 
 
+# Count the numberof unique values (variations) for certain columns of interest
+acca_data_rds |>
+  summarise(across(
+    c(
+      email_domain,
+      currency,
+      is_cross_border,
+      product_type,
+      payment_method,
+      channel,
+      merchant_category,
+      customer_id,
+      billing_country,
+      shipping_country
+    ),
+    .fns = ~ n_distinct(.x), #This counts the number of unique values
+    .names = "{.col}"
+  )) |>
+  pivot_longer(
+    everything(),
+    names_to = "items",
+    values_to = "unique_values",
+  ) # This would enable you direct the focus of your analysis while others have not missing values.
+# It may also not be valuable to analyse customer_id because of its size; 1092 unique customers id
+
+# Check for missing values and address them
+
+# Questions and analysis -------------------------------------------------
+
+# Proportion of transactions that are fraudulent
+acca_data_rds |>
+  count(actual_fraud) |>
+  mutate(fraud_incidence_prop = n * 100 / nrow(acca_data)) # About 2% fraud incidence
+
 # What percentage of transactions are fraudulent?  (actual fraud)
 # What is the total financial exposure to fraud?  (amount)
-fraud_data <- acca |>
-  group_by(actual_fraud) |>
+fraud_data <- acca_data_rds |>
+  filter(actual_fraud == "fraudulent") |>
+  group_by(actual_fraud, currency) |>
   summarise(
-    num = n(),
-    proportion = round(num / nrow(acca) * 100, digits = 1),
-    value = round(mean(amount, na.rm = T), digits = 1),
-    total_amount = format(sum(amount), big.mark = ",")
+    fraud_count = n(),
+    fraud_total_value = format(sum(amount), big.mark = ","),
+    fraud_average_value = round(mean(amount, na.rm = T), digits = 1),
+    fraud_proportion = round(fraud_count / nrow(acca_data) * 100, digits = 1)
   ) |>
-  gt()
+  select(-actual_fraud) |>
+  gt() # Majority of the fraudulent transaction were conducted in EUR with an average value of EUR 60.
+# The total value of frudulent trabsaction is decomposed as follows EUR 1200, GBP 429 and USD $73
 
 # Fraud trend over the period
-acca |>
+acca_data_rds |>
   mutate(
     day = day(transaction_date)
   ) |>
-  filter(actual_fraud == "fraud") |>
+  filter(actual_fraud == "fraudulent") |>
   group_by(day) |>
   summarise(
     total_fraud = sum(amount),
     incidence = n()
   ) |>
   ggplot() +
-  geom_point(aes(x = day, y = incidence)) +
-  theme_economist() +
-  scale_color_economist()
-
-# The incidence of fraud incidence has been stable overtime; static at one or two per day
+  geom_col(aes(x = day, y = incidence)) +
+  theme_minimal() +
+  theme(
+    # panel.grid.minor.y = element_blank(),
+    panel.grid.minor.x = element_blank(),
+    panel.grid.major.y = element_line(
+      linetype = 0.9
+    ),
+    panel.grid.major.x = element_line()
+  ) # Fraud incidence has been stable overtime; static at one or two issues per day that they occur
 
 # Fraud trend over the period
 # Are fraudulent transactions increasing over time (data and time)
-acca |>
+acca_data_rds |>
   mutate(
     day = day(transaction_date)
   ) |>
   filter(actual_fraud == "fraud") |>
   group_by(day) |>
   summarise(
-    total_fraud = sum(amount),
-    incidence = n()
+    total_fraud_amount = sum(amount),
+    fraud_incidence_count = n()
   ) |>
   ggplot() +
-  geom_point(aes(x = total_fraud)) # The amount involved in fraudulent transaction is betweeen 50 to 100 units of the currency amount
+  geom_point(aes(
+    x = day,
+    y = fraud_incidence_count
+  )) # The amount involved in fraudulent transaction is betweeen 50 to 100 units of the currency amount
 
 
-# Customer risk analysis
+## Customer risk analysis
 # Which customer age groups experience the most fraud?
 # Are VIP customers more or less likely to experience fraud?
 # Does customer tenure reduce fraud risk?
 # Which customers generate the highest fraud losses?
 
-# Data analysis strategy
-# Variables (customer_tenure_days, is_vip, customer_id, customer_age    )
-# data type - is_vip to factor, confirm the distinct number
-data_customer <- acca |>
+# Which customer age groups experience the most fraud?
+acca_data_rds |>
+  filter(actual_fraud == "fraudulent") |>
+  count(customer_age, sort = TRUE) |>
+  arrange(desc(customer_age)) # It appears customers of all ages are eqaully likely to experience transaction fraud.
+
+
+# VIP customers more or less likely to experience fraud?
+acca_data_rds |>
+  filter(
+    actual_fraud == "fraudulent"
+  ) |>
+  count(is_vip, amount, sort = TRUE) # No VIP customers transation was involved involved in fraud.
+
+# Does customer tenure reduce fraud risk?
+acca_data_rds |>
+  mutate(
+    diff_in_tenure = customer_tenure_days > 1826.647
+  ) |>
+  filter(actual_fraud == "fraudulent") |>
+  count(diff_in_tenure) # Fraud incidence do appear to be associated with customer tenure. Customers with tenure lower than the average
+# are 6 out of 10 customers with tenure shorter than the average experence while the chances are 40% for longer tenure customers.
+
+# Which customers generate the highest fraud losses?
+acca_data_rds |>
+  filter(actual_fraud == "fraudulent") |>
+  slice_max(order_by = amount, n = 5) |>
   select(
-    customer_tenure_days,
-    is_vip,
     customer_id,
     customer_age,
     amount,
-    actual_fraud
+    currency,
+    channel,
+    payment_method,
+    customer_tenure_days
+  ) # Top three fraud by value involved card payment. Does that mean that card payments are more succestible?
+
+## Digital properties and fraud incidence
+#Which payment methods are the most vulnerable?
+acca_data_rds |>
+  filter(actual_fraud == "fraudulent") |>
+  count(payment_method, sort = TRUE) |>
+  ggplot(aes(y = fct_reorder(payment_method, n, .desc = F), x = n)) +
+  geom_col(fill = "#B7E7FC", width = 0.6) +
+  theme_minimal() +
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      linewidth = 0.3
+    )
+  ) # Card payment transactions recorded the highest fraud.
+
+
+# Which channels have the highest fraud rates?
+acca_data_rds |>
+  filter(actual_fraud == "fraudulent") |>
+  count(channel, sort = TRUE) |>
+  ggplot(aes(y = fct_reorder(channel, n, .desc = F), x = n)) +
+  geom_col(fill = "#EDC17E", width = 0.6) +
+  theme_minimal() +
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      linewidth = 0.3
+    )
+  ) # Web channel transations reported the highest fraud.
+
+
+## Geographic Fraud Patterns of fraud incidence
+# Which countries generate the most fraud?
+# Are cross-border transactions riskier?
+# Are mismatches between billing, shipping, and IP country associated with fraud?
+
+# Are cross-border transactions riskier?
+# I define as cross-border transaction where ip_country, billing_country, and shipping_country,
+# differ
+
+acca_data_rds_with_cross_border <- acca_data_rds |>
+  # creatr cross_border variable based on the above definition criteria
+  mutate(
+    is_cross_border = if_else(
+      (ip_country != billing_country) &
+        (billing_country != shipping_country),
+      "suspicious_cross border",
+      "within border",
+      "check"
+    )
   )
 
+# Determine the proportion frauduleent cross border transactions
+acca_data_rds_with_cross_border |>
+  filter(actual_fraud == "fraudulent") |>
+  count(actual_fraud, is_cross_border) # Majority of fraudulent transactions are cross border transactions.
+#Transactions where the IP country is different from the billing as well as where billing and shipping countries differ.
+
+# variables for the plot title
+billing_country_high_risk_1 <- "Great Britain (GB)"
+billing_country_high_risk_2 <- "Ireland (IE)"
+
+# The plot title
+plot_title <- marquee_glue(
+  "{.#088F8F **{billing_country_high_risk_1}**} and {.#088F8F **{billing_country_high_risk_2}**} are the top billing destinations
+     for fraudulent transactions."
+)
+
+acca_data_rds |>
+  filter(actual_fraud == "fraudulent") |>
+  summarise(
+    fraud_incidence = n(),
+    .by = billing_country
+  ) |>
+  mutate(
+    prop = fraud_incidence / sum(fraud_incidence),
+  ) |>
+  mutate(
+    billing_country_risk = if_else(
+      billing_country %in% c("GB", "IE"),
+      "High risk",
+      "Risky"
+    )
+  ) |>
+  mutate(
+    billing_country = fct_reorder(billing_country, prop, .desc = FALSE)
+  ) |>
+  ggplot(
+    aes(
+      y = billing_country,
+      x = prop,
+      fill = billing_country_risk,
+      label = percent(prop)
+    ) # This turns the prop doubles into percentage values
+  ) +
+  geom_col() +
+  scale_fill_manual(
+    values = c('#088F8F', "#D3D3D3")
+  ) +
+  geom_text_repel(
+    hjust = 1.4,
+    color = "White",
+    size = 4,
+    fontface = "bold"
+  ) +
+  theme_minimal() +
+  labs(
+    title = plot_title,
+    subtitle = "They accounted for more than 50% of the total fraud losses.",
+  ) +
+  ylab("Billing country") +
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      linewidth = 0.3
+    ),
+    axis.text.x = element_blank(), #This is made invisble
+    axis.text.y = element_text(
+      face = "bold",
+      size = 11,
+      vjust = 1,
+      hjust = 1,
+      margin = NULL
+    ),
+    axis.title.x = element_blank(),
+    legend.position = 'none',
+    axis.title.y = element_text(
+      face = "plain",
+      size = 13,
+      vjust = 2,
+      hjust = 0.5
+    ),
+    plot.title = element_marquee(
+      width = 1,
+      size = 19,
+      hjust = ,
+      vjust = 0,
+      margin = NULL,
+      lineheight = 1,
+    ),
+    plot.subtitle = element_text(
+      width = 1,
+      size = 15,
+      vjust = 1,
+      lineheight = 1.5
+    ),
+    plot.title.position = "plot"
+  ) +
+  scale_x_continuous(
+    labels = percent_format() # This format the x-axis text to % but I decided to leave the axis not visible.
+  )
+
+unique(acca_data_rds$billing_country)
+
+
+#
+# Declutter, highlights, label
+
+coun
+t(billing_country, sort = TRUE) |>
+  head(10)
+
+acca_data_rds |>
+  filter(actual_fraud == "fraudulent") |>
+  count(billing_country, sort = TRUE) |>
+  head(10)
+
+
+# Merchant Risk Analysis
+# Does merchant risk score correlate with actual fraud?
+
+plot_title_boxplot_variabe <- "Fraudulent transactions"
+plot_title_box_plot <- marquee_glue(
+  "{.#6cabdd **{plot_title_boxplot_variabe}** }  are more prevalent with risker merchants"
+)
+
+
+acca_data_rds |>
+  ggplot(aes(x = actual_fraud, y = merchant_riskscore, color = actual_fraud)) +
+  geom_boxplot(
+    outlier.shape = 1,
+    outlier.color = "orange",
+    box.linewidth = 1,
+    outlier.fill = "orange",
+    whisker.linewidth = 1
+  ) +
+  theme_minimal() +
+  scale_color_manual(
+    values = c('#088F8F', "#6cabdd")
+  ) +
+  theme(
+    panel.grid.major.x = element_blank(),
+    panel.grid.major.y = element_line(
+      linewidth = 0.3
+    ),
+    panel.grid.minor.y = element_blank(),
+    #panel.grid.major.y = element_blank(),
+    axis.text.x = element_text(
+      face = "bold",
+      size = 11,
+      vjust = 1,
+      margin = NULL
+    ),
+    axis.text.y = element_text(
+      face = "bold",
+      size = 11,
+      vjust = 1,
+
+      margin = NULL
+    ),
+    axis.title.x = element_blank(),
+    legend.position = 'none',
+    axis.title.y = element_text(
+      face = "plain",
+      size = 13,
+      vjust = 3,
+      hjust = 0.5
+    ),
+    plot.title = element_marquee(
+      width = 1,
+      size = 18,
+      hjust = 0,
+      vjust = 1,
+      margin = NULL,
+      lineheight = 1
+    ),
+    plot.subtitle = element_text(
+      width = 1,
+      size = 14,
+      vjust = 1,
+      lineheight = 7
+    ),
+    plot.title.position = "plot"
+  ) +
+  ylab("Merchants' risk scores") +
+  labs(
+    title = plot_title_box_plot,
+    subtitle = "Incidence is more pronounced highly risky merchant",
+  ) # Fraud transactions have higher merchant risk scores relative to non-fraudulent ones
+
+
+# Which merchant categories have the highest fraud rates?
+acca_data_rds |>
+  filter(actual_fraud == "fraudulent") |>
+  count(
+    merchant_category,
+    actual_fraud,
+    sort = T,
+    name = "fraud_count"
+  ) |>
+  ggplot(aes(
+    y = fct_reorder(merchant_category, fraud_count, .desc = F),
+    x = fraud_count
+  )) +
+  geom_col() +
+  theme_minimal() +
+  theme(
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.y = element_blank(),
+    panel.grid.major.x = element_line(
+      linewidth = 0.3
+    )
+  ) # Fraudulent transations are more prevalent in marketplaces than in other channels
+
+
+acca_data_rds_with_cross_border |> view()
+filter(actual_fraud == "fraudulent") |>
+  group_by(is_cross_border) |>
+  summarise(
+    fraud_incidence = n(),
+    sum_loss = round(sum(amount), digits = 0)
+  ) |>
+  gt() |>
+  gt_highlight_rows(
+    row = 1,
+    fill = "lightgrey",
+    font_color = "navyblue",
+    alpha = 0.3,
+    font_weight = "normal"
+  ) # Crossborder transactions are riskier.
+
+
+mean(acca_data_rds$customer_tenure_days)
+
+acca_data_rds |>
+  filter(actual_fraud == "fraudulent")
+
+glimpse(acca_data_rds)
+
+
+# Data analysis strategy
+# Variables (customer_tenure_days, is_vip, customer_id, customer_age    )
+# data type - is_vip to factor, confirm the distinct number
 
 # Which customer age groups experience the most fraud?
 data_customer <- data_customer |>
@@ -108,9 +471,6 @@ data_customer <- data_customer |>
     is_vip = factor(is_vip, levels = c(0, 1), labels = c("non vip", "vip"))
   )
 
-data_customer |>
-  filter(actual_fraud == "fraud") |>
-  count(customer_age, sort = T) # Customer age 26 and 42 experience the most fraud with two incidences per age group
 
 data_customer |>
   filter(actual_fraud == "fraud") |>
@@ -147,44 +507,8 @@ data_customer_losses |>
   )
 
 
-# Merchant Risk Analysis
-# Which merchant categories have the highest fraud rates?
-data_merchant <- acca |>
-  select(
-    merchant_id,
-    merchant_category,
-    merchant_riskscore,
-    actual_fraud,
-    amount
-  )
-data_merchant |>
-  filter(actual_fraud == "fraud") |>
-  count(
-    merchant_category,
-    actual_fraud,
-    wt = amount,
-    sort = T,
-    name = "fraud_amount"
-  ) |>
-  ggplot(aes(
-    x = fct_reorder(merchant_category, fraud_amount, .desc = T),
-    y = fraud_amount
-  )) +
-  geom_col() +
-  scale_colour_viridis_c() +
++scale_colour_viridis_c() +
   coord_flip()
-
-# Does merchant risk score correlate with actual fraud?
-acca |>
-  select(merchant_riskscore, actual_fraud, amount) |>
-  ggplot(aes(x = actual_fraud, y = merchant_riskscore, color = actual_fraud)) +
-  geom_boxplot(outlier.shape = 1, outlier.color = "magenta") +
-  theme_minimal() +
-  scale_color_colorblind() +
-  labs(
-    title = "Customer transaction fraud",
-    subtitle = "Incidence is more pronounced highly risky merchant",
-  )
 
 
 ## Geographic Fraud Patterns
@@ -195,6 +519,28 @@ acca |>
 data_country <- acca |>
   select(ip_country, billing_country, shipping_country, actual_fraud, amount)
 
+# fraud incidence by their billing countring
+acca_data_rds |>
+  filter(actual_fraud == "fraudulent") |>
+  count(billing_country, sort = TRUE) |>
+  head(10)
+
+
+# fraud incidence by their billing countring
+acca_data_rds |>
+  filter(actual_fraud == "fraudulent") |>
+  count(shipping_country, sort = TRUE) |>
+  head(10)
+
+acca_data_rds |>
+  filter(
+    (actual_fraud == "fraudulent") & (shipping_country != billing_country)
+  ) |>
+  filter(shipping_country != billing_country) |>
+  count(actual_fraud, sort = TRUE) |>
+  head(10) #
+
+
 data_country |>
   mutate(
     cross_border = if_else(
@@ -207,21 +553,10 @@ data_country |>
     )
   )
 
-data_country <- data_country |>
-  mutate(
-    cross_border = if_else(
-      (ip_country != billing_country) &
-        (billing_country != shipping_country) &
-        (ip_country != shipping_country),
-      "cross border",
-      "within border",
-      "check"
-    )
-  )
 
-data_country |>
-  filter(actual_fraud == "fraud") |>
-  group_by(cross_border) |>
+acca_data_rds_with_cross_border |>
+  filter(actual_fraud == "fraudulent") |>
+  group_by(is_cross_border) |>
   summarise(
     fraud_incidence = n(),
     sum_loss = round(sum(amount), digits = 0)
@@ -245,29 +580,7 @@ data_digital <- acca |>
     actual_fraud
   )
 
-#Which payment methods are most vulnerable?
-data_digital |>
-  filter(actual_fraud == "fraud") |>
-  count(payment_method, sort = TRUE) |>
-  ggplot(aes(x = fct_reorder(payment_method, n, .desc = F), y = n)) +
-  geom_col(fill = "skyblue") +
-  coord_flip() +
-  theme_economist_white() +
-  scale_colour_economist() +
-  theme_classic()
 
-# Which channels have the highest fraud rates?
-data_digital |>
-  filter(actual_fraud == "fraud") |>
-  count(channel, sort = TRUE) |>
-  ggplot(aes(x = fct_reorder(channel, n, .desc = F), y = n)) +
-  geom_col(fill = "skyblue") +
-  theme_economist_white() +
-  scale_colour_economist() +
-  theme_classic() # Web payment method reported the highest fraud.
-
-
-#
 #
 
 game_films <- readr::read_csv(
