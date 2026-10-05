@@ -166,7 +166,8 @@ acca_data_rds |>
     channel,
     payment_method,
     customer_tenure_days
-  ) # Top three fraud by value involved card payment. Does that mean that card payments are more succestible?
+  ) |>
+  flextable::flextable() # Top three fraud by value involved card payment. Does that mean that card payments are more succestible?
 
 ## Digital properties and fraud incidence
 #Which payment methods are the most vulnerable?
@@ -239,6 +240,7 @@ plot_title <- marquee_glue(
 )
 
 acca_data_rds |>
+  acca_data_rds |>
   filter(actual_fraud == "fraudulent") |>
   summarise(
     fraud_incidence = n(),
@@ -413,6 +415,13 @@ acca_data_rds |>
 
 
 # Which merchant categories have the highest fraud rates?
+plot_title_merchant_category_marketplaces <- 'Marketplaces'
+plot_title_merchant_category_fashion <- 'fashion'
+plot_title_merchant_category <- marquee_glue(
+  " {.#088F8F **{plot_title_merchant_category_marketplaces}**} and {.#088F8F **{plot_title_merchant_category_fashion}** }  are the most susceptible merchants channels to fraudulent transactions."
+)
+
+
 acca_data_rds |>
   filter(actual_fraud == "fraudulent") |>
   count(
@@ -421,18 +430,71 @@ acca_data_rds |>
     sort = T,
     name = "fraud_count"
   ) |>
+  mutate(
+    merchant_category_risk = if_else(
+      merchant_category %in% c("marketplace", "fashion"),
+      "High-risk merchant",
+      "Risky merchant"
+    )
+  ) |>
   ggplot(aes(
     y = fct_reorder(merchant_category, fraud_count, .desc = F),
-    x = fraud_count
+    x = fraud_count,
+    fill = merchant_category_risk,
+    label = fraud_count
   )) +
   geom_col() +
   theme_minimal() +
+  geom_text_repel(
+    hjust = 2,
+    color = "White",
+    size = 6,
+    fontface = "bold"
+  ) +
+  scale_fill_manual(
+    values = c('#088F8F', "#D3D3D3")
+  ) +
+  labs(
+    title = plot_title_merchant_category
+  ) +
+  ylab("Merchant category channels") +
   theme(
     panel.grid.minor.y = element_blank(),
     panel.grid.major.y = element_blank(),
     panel.grid.major.x = element_line(
       linewidth = 0.3
-    )
+    ),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(
+      face = "bold",
+      size = 12,
+      vjust = 1,
+      hjust = 1,
+      margin = NULL
+    ),
+    axis.title.x = element_blank(),
+    legend.position = 'none',
+    axis.title.y = element_text(
+      face = "plain",
+      size = 13,
+      vjust = 1.8,
+      hjust = 0.5
+    ),
+    plot.title = element_marquee(
+      width = 1,
+      size = 19,
+      hjust = 0,
+      vjust = 1,
+      margin = NULL,
+      lineheight = 1
+    ),
+    plot.subtitle = element_text(
+      width = 1,
+      size = 14,
+      vjust = 1,
+      lineheight = 7
+    ),
+    plot.title.position = "plot"
   ) # Fraudulent transations are more prevalent in marketplaces than in other channels
 
 
