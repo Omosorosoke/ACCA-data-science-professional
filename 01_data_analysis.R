@@ -9,6 +9,9 @@ library(hrbrthemes)
 library(scales)
 library(marquee)
 library(ggrepel)
+library(flextable)
+library("gtExtras")
+
 
 # Import data and keep a raw copy------------------------------------------------------------
 
@@ -33,8 +36,7 @@ acca_data_rds <- acca_data |>
     )
   )
 
-
-# Count the numberof unique values (variations) for certain columns of interest
+# Count the number of unique values for certain columns of interest. This gives idea of how much variation there is.
 acca_data_rds |>
   summarise(across(
     c(
@@ -61,69 +63,128 @@ acca_data_rds |>
 
 # Check for missing values and address them
 
-# Questions and analysis -------------------------------------------------
+### Questions and analysis -------------------------------------------------
 
-# Proportion of transactions that are fraudulent
+# What proportion of transactions are fraudulent.
+# Proportion of fraudulent transactions.
 acca_data_rds |>
   count(actual_fraud) |>
-  mutate(fraud_incidence_prop = n * 100 / nrow(acca_data)) # About 2% fraud incidence
+  mutate(fraud_incidence_prop = n * 100 / nrow(acca_data)) # The overall fraud rate for the month is about 2% of the total transaction.
 
 # What percentage of transactions are fraudulent?  (actual fraud)
 # What is the total financial exposure to fraud?  (amount)
+
+# Fraud incidence by currency, losses and rate (Flextable)
 fraud_data <- acca_data_rds |>
   filter(actual_fraud == "fraudulent") |>
-  group_by(actual_fraud, currency) |>
+  group_by(currency) |>
   summarise(
     fraud_count = n(),
-    fraud_total_value = format(sum(amount), big.mark = ","),
-    fraud_average_value = round(mean(amount, na.rm = T), digits = 1),
-    fraud_proportion = round(fraud_count / nrow(acca_data) * 100, digits = 1)
+    total_fraud_loss = format(sum(amount), big.mark = ","),
+    average_fraud_loss = round(mean(amount, na.rm = T), digits = 1),
+    fraud_rate = round(fraud_count / nrow(acca_data_rds) * 100, digits = 1)
   ) |>
-  select(-actual_fraud) |>
-  gt() # Majority of the fraudulent transaction were conducted in EUR with an average value of EUR 60.
+  flextable() |>
+  set_header_labels(
+    currency = "Currency",
+    fraud_count = "Fraud count",
+    total_fraud_loss = "Total fraud loss",
+    average_fraud_loss = "Average fraud loss",
+    fraud_rate = " Fraud rate"
+  ) |>
+  align(j = (2:5), align = "center") |>
+  autofit() |>
+  add_header_lines("Fraud incidence by currency", top = TRUE) |> # Header title
+  align(part = "header", align = 'center') |> # Align header
+  bg(bg = "#d3d3d337", i = 2, part = "header") |> # Color backgroiund for style
+  bold(part = "header") |>
+  bg(bg = "#d3d3d337", part = "body", i = 2) |>
+  color(i = 1, part = "body", j = c(1, 2, 3, 5), color = "#088F8F") |> # Use color to emphasize finding
+  bold(i = 1, part = "body", j = c(1, 2, 3, 5)) # Majority of the fraudulent transaction were conducted in EUR with an average value of EUR 60.
 # The total value of frudulent trabsaction is decomposed as follows EUR 1200, GBP 429 and USD $73
 
-# Fraud trend over the period
+# Fraud incidence and  trend over the month
+# what is the fraud rate per day
+plot_title_fraud_incidence_1 <- "One"
+plot_title_fraud_incidence_2 <- "two"
+plot_title_fraud_incidence <- marquee_glue(
+  "{.#088F8F **{plot_title_fraud_incidence_1}** } or {.#088F8F **{plot_title_fraud_incidence_2 }** } cases of fraud incidence is typical, with three cases on a single day being an outlier."
+)
 acca_data_rds |>
   mutate(
-    day = day(transaction_date)
+    day_of_the_month = day(transaction_date)
   ) |>
   filter(actual_fraud == "fraudulent") |>
-  group_by(day) |>
+  group_by(day_of_the_month) |>
   summarise(
     total_fraud = sum(amount),
     incidence = n()
   ) |>
-  ggplot() +
-  geom_col(aes(x = day, y = incidence)) +
-  theme_minimal() +
-  theme(
-    # panel.grid.minor.y = element_blank(),
-    panel.grid.minor.x = element_blank(),
-    panel.grid.major.y = element_line(
-      linetype = 0.9
-    ),
-    panel.grid.major.x = element_line()
-  ) # Fraud incidence has been stable overtime; static at one or two issues per day that they occur
-
-# Fraud trend over the period
-# Are fraudulent transactions increasing over time (data and time)
-acca_data_rds |>
   mutate(
-    day = day(transaction_date)
+    fraud_incidence_per_day = if_else(
+      incidence %in% c(1, 2),
+      "typical",
+      "outlier"
+    )
   ) |>
-  filter(actual_fraud == "fraud") |>
-  group_by(day) |>
-  summarise(
-    total_fraud_amount = sum(amount),
-    fraud_incidence_count = n()
-  ) |>
-  ggplot() +
-  geom_point(aes(
-    x = day,
-    y = fraud_incidence_count
-  )) # The amount involved in fraudulent transaction is betweeen 50 to 100 units of the currency amount
-
+  ggplot(aes(
+    x = day_of_the_month,
+    y = incidence,
+    fill = fraud_incidence_per_day
+  )) +
+  geom_col() +
+  theme_minimal() +
+  scale_fill_manual(values = c("#D3D3D3", '#088F8F')) +
+  theme_minimal() +
+  labs(
+    title = plot_title_fraud_incidence,
+    subtitle = "In a given month, fraud does not occur every day"
+  ) +
+  xlab("Day of the month") +
+  ylab("Fraud count per day") +
+  annotate(
+    geom = "text",
+    x = 29,
+    y = 2,
+    hjust = 1,
+    color = '#088F8F',
+    family = "serif",
+    label = "Exceptional case with 3 counts",
+    size = 4.5,
+    fontface = 'bold',
+    angle = 90
+  ) +
+  theme(
+    legend.position = 'none',
+    panel.grid.minor.x = element_blank(),
+    panel.grid.minor.y = element_blank(),
+    panel.grid.major.x = element_line(
+      linetype = 0.3
+    ),
+    axis.title.y = element_text(
+      size = 13,
+      vjust = 1.8,
+      hjust = 0.5,
+    ),
+    axis.text.x = element_text(
+      face = "bold",
+      size = 11,
+      margin = NULL
+    ),
+    axis.text.y = element_text(
+      face = "bold",
+      size = 11,
+      margin = NULL
+    ),
+    plot.title = element_marquee(
+      width = 1,
+      size = 19,
+      vjust = 0,
+      margin = NULL,
+      lineheight = 1,
+    )
+  ) # One or two cases of fraud incidence per day are typical, with three cases on a single day being an outlier."
+# Fraud incidence in a given month ranges between one and two per day with three being an outlier.
 
 ## Customer risk analysis
 # Which customer age groups experience the most fraud?
@@ -138,7 +199,7 @@ acca_data_rds |>
   arrange(desc(customer_age)) # It appears customers of all ages are eqaully likely to experience transaction fraud.
 
 
-# VIP customers more or less likely to experience fraud?
+# Are VIP customers more or less likely to experience fraud?
 acca_data_rds |>
   filter(
     actual_fraud == "fraudulent"
@@ -152,7 +213,7 @@ acca_data_rds |>
   ) |>
   filter(actual_fraud == "fraudulent") |>
   count(diff_in_tenure) # Fraud incidence do appear to be associated with customer tenure. Customers with tenure lower than the average
-# are 6 out of 10 customers with tenure shorter than the average experence while the chances are 40% for longer tenure customers.
+# are more likely to experience fraud. Specifically, 6 out of 10 customers with shorter tenure were victims relative to 40% for longer-tenure customers.
 
 # Which customers generate the highest fraud losses?
 acca_data_rds |>
@@ -174,30 +235,108 @@ acca_data_rds |>
 acca_data_rds |>
   filter(actual_fraud == "fraudulent") |>
   count(payment_method, sort = TRUE) |>
-  ggplot(aes(y = fct_reorder(payment_method, n, .desc = F), x = n)) +
-  geom_col(fill = "#B7E7FC", width = 0.6) +
+  mutate(
+    payment_method_risk = if_else(
+      n >= 18,
+      "High risk",
+      "Risky"
+    )
+  ) |>
+  ggplot(aes(
+    y = fct_reorder(payment_method, n, .desc = F),
+    x = n,
+    fill = payment_method_risk
+  )) +
+  geom_col(width = 0.6) +
+  scale_fill_manual(
+    values = c('#088F8F', "#D3D3D3")
+  ) +
+  xlab('Fraud count') +
+  ylab('Payment method') +
   theme_minimal() +
   theme(
     panel.grid.minor.y = element_blank(),
     panel.grid.major.y = element_blank(),
     panel.grid.major.x = element_line(
       linewidth = 0.3
-    )
-  ) # Card payment transactions recorded the highest fraud.
+    ),
+    axis.text.y = element_text(
+      face = "bold",
+      size = 11,
+      vjust = 1,
+      hjust = 1,
+      margin = NULL
+    ),
+    legend.position = 'none',
+    axis.text.x.bottom = element_text(
+      face = "bold",
+      size = 11,
+      vjust = 1,
+      hjust = 1,
+      margin = NULL
+    ),
+    axis.title.x = element_text(
+      face = "plain",
+      size = 13,
+      vjust = 1,
+      hjust = 0.5
+    ),
+  )
 
+# Card payment transactions recorded the highest fraud.
 
 # Which channels have the highest fraud rates?
 acca_data_rds |>
   filter(actual_fraud == "fraudulent") |>
   count(channel, sort = TRUE) |>
-  ggplot(aes(y = fct_reorder(channel, n, .desc = F), x = n)) +
-  geom_col(fill = "#EDC17E", width = 0.6) +
+  mutate(
+    channel_risk = if_else(
+      n > 15,
+      "High risk channel",
+      "Risky"
+    )
+  ) |>
+  ggplot(aes(
+    y = fct_reorder(channel, n, .desc = F),
+    x = n,
+    fill = channel_risk,
+    labels = n
+  )) +
+  geom_col(width = 0.6) +
+  ylab(
+    "Transaction channels"
+  ) +
+  scale_fill_manual(
+    values = c('#088F8F', "#D3D3D3")
+  ) +
+  geom_text_repel(
+    hjust = 2,
+    color = "White",
+    size = 4,
+    fontface = "bold"
+  ) +
   theme_minimal() +
   theme(
     panel.grid.minor.y = element_blank(),
     panel.grid.major.y = element_blank(),
     panel.grid.major.x = element_line(
       linewidth = 0.3
+    ),
+    legend.position = "none",
+    axis.title.x = element_blank(),
+    axis.text.x = element_blank(),
+    axis.text.y = element_text(
+      face = "bold",
+      size = 12,
+      vjust = 1,
+      hjust = 1,
+      margin = NULL
+    ),
+    axis.title.y = element_text(
+      face = "plain",
+      size = 13,
+      vjust = 2,
+      hjust = 0.5
     )
   ) # Web channel transations reported the highest fraud.
 
@@ -308,7 +447,6 @@ acca_data_rds |>
     plot.title = element_marquee(
       width = 1,
       size = 19,
-      hjust = ,
       vjust = 0,
       margin = NULL,
       lineheight = 1,
@@ -650,3 +788,64 @@ game_films <- readr::read_csv(
 )
 View(game_films)
 ?(quade.test())
+
+
+fraud_data <- acca_data_rds |>
+  filter(actual_fraud == "fraudulent") |>
+  group_by(currency) |>
+  summarise(
+    fraud_count = n(),
+    fraud_total_loss = format(sum(amount), big.mark = ","),
+    fraud_average_loss = round(mean(amount, na.rm = T), digits = 1),
+    fraud_proportion = round(
+      fraud_count / nrow(acca_data_rds) * 100,
+      digits = 1
+    )
+  )
+gt() # Majority of the fraudulent transaction were conducted in EUR with an average value of EUR 60.
+# The total value of frudulent trabsaction is decomposed as follows EUR 1200, GBP 429 and USD $73
+
+#
+fraud_data <- acca_data_rds |>
+  filter(actual_fraud == "fraudulent") |>
+  group_by(currency) |>
+  summarise(
+    fraud_count = n(),
+    total_fraud_loss = format(sum(amount), big.mark = ","),
+    average_fraud_loss = round(mean(amount, na.rm = T), digits = 1),
+    fraud_rate = round(fraud_count / nrow(acca_data_rds) * 100, digits = 1)
+  ) |>
+  gt() |>
+  cols_label(
+    currency = "Currency",
+    fraud_count = "Fraud count",
+    total_fraud_loss = "Total fraud loss",
+    average_fraud_loss = "Average fraud loss",
+    fraud_rate = " Fraud rate"
+  ) |>
+  cols_align(
+    align = "center",
+    columns = everything()
+  ) |>
+  tab_header(
+    title = html("Fraud incidence by currency")
+  )
+
+
+# Fraud trend over the period
+# Are fraudulent transactions increasing over time (data and time)
+acca_data_rds |>
+  mutate(
+    day = day(transaction_date)
+  ) |>
+  filter(actual_fraud == "fraud") |>
+  group_by(day) |>
+  summarise(
+    total_fraud_amount = sum(amount),
+    fraud_incidence_count = n()
+  ) |>
+  ggplot() +
+  geom_point(aes(
+    x = day,
+    y = fraud_incidence_count
+  )) # The amount involved in fraudulent transaction is betweeen 50 to 100 units of the currency amount
